@@ -3,35 +3,63 @@ import {
   MOCK_MEMORY_SUMMARY,
   MOCK_MEMORY_RECOMMENDATIONS,
 } from '@/constants/mockData';
+import {
+  DeviceMetricsModule,
+  isNativeModuleAvailable,
+} from '../../modules/device-metrics/src';
 
 export interface IMemoryService {
   getMemorySummary(): Promise<MemorySummary>;
   getMemoryRecommendations(): Promise<MemoryRecommendation[]>;
+  isNativeAvailable(): boolean;
 }
 
 /**
- * MockMemoryService
- * Implementation of IMemoryService using mock fixtures.
- * In Phase 2, this will interface with Android's ActivityManager.MemoryInfo
- * and android.os.Debug APIs via Kotlin native modules.
+ * AndroidNativeMemoryService
+ * Implementation of IMemoryService that queries real Android ActivityManager.MemoryInfo
+ * via our custom Kotlin Expo Module (DeviceMetricsModule).
+ * Accurately measures system RAM, available pages, threshold, and lowMemory state.
  */
-export class MockMemoryService implements IMemoryService {
+export class AndroidNativeMemoryService implements IMemoryService {
+  isNativeAvailable(): boolean {
+    return isNativeModuleAvailable && DeviceMetricsModule !== null;
+  }
+
   async getMemorySummary(): Promise<MemorySummary> {
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    if (this.isNativeAvailable()) {
+      try {
+        const nativeMem = await DeviceMetricsModule!.getMemorySummary();
+        return {
+          totalBytes: nativeMem.totalBytes,
+          usedBytes: nativeMem.usedBytes,
+          availableBytes: nativeMem.availableBytes,
+          appUsageBytes: nativeMem.appUsageBytes,
+          pressureLevel: nativeMem.pressureLevel,
+          pressurePercentage: nativeMem.pressurePercentage,
+          thresholdBytes: nativeMem.thresholdBytes,
+          isLowMemory: nativeMem.isLowMemory,
+          isMock: false,
+          lastUpdated: nativeMem.lastUpdated,
+        };
+      } catch (error) {
+        console.warn('Native getMemorySummary failed, using fallback:', error);
+      }
+    }
+
+    // Fallback for Expo Go sandbox
     return {
       ...MOCK_MEMORY_SUMMARY,
       isMock: true,
-      lastUpdated: 'Just now (Simulated)',
+      lastUpdated: 'Expo Go (Simulated Fallback)',
     };
   }
 
   async getMemoryRecommendations(): Promise<MemoryRecommendation[]> {
-    await new Promise((resolve) => setTimeout(resolve, 80));
     return MOCK_MEMORY_RECOMMENDATIONS;
   }
 }
 
-export const memoryService: IMemoryService = new MockMemoryService();
+export const memoryService: IMemoryService = new AndroidNativeMemoryService();
 
 // Standalone interface-matching function export as specified in requirements
 export const getMemorySummary = (): Promise<MemorySummary> =>

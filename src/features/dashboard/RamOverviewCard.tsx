@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Card } from '@/components/Card';
@@ -13,15 +13,50 @@ import { Radius, Spacing, Typography } from '@/constants/theme';
 interface RamOverviewCardProps {
   summary: MemorySummary | null;
   loading?: boolean;
+  error?: string | null;
+  onRefresh?: () => void;
 }
 
 export const RamOverviewCard: React.FC<RamOverviewCardProps> = ({
   summary,
   loading = false,
+  error,
+  onRefresh,
 }) => {
   const theme = useTheme();
 
-  if (!summary && !loading) {
+  if (loading && !summary) {
+    return (
+      <Card style={[styles.container, styles.centerCard]}>
+        <ActivityIndicator size="small" color={theme.info} />
+        <Text style={[Typography.bodySmall, { color: theme.textSecondary, marginTop: Spacing.two }]}>
+          Querying Android ActivityManager...
+        </Text>
+      </Card>
+    );
+  }
+
+  if (error && !summary) {
+    return (
+      <Card style={styles.container}>
+        <View style={styles.errorRow}>
+          <Ionicons name="alert-circle-outline" size={20} color={theme.error} />
+          <Text style={[Typography.labelMedium, { color: theme.error, flex: 1 }]}>
+            {error}
+          </Text>
+        </View>
+        {onRefresh && (
+          <Pressable onPress={onRefresh} style={{ marginTop: Spacing.two }}>
+            <Text style={[Typography.labelMedium, { color: theme.primary }]}>
+              Tap to Retry
+            </Text>
+          </Pressable>
+        )}
+      </Card>
+    );
+  }
+
+  if (!summary) {
     return (
       <Card style={styles.container}>
         <Text style={[Typography.bodyMedium, { color: theme.textSecondary }]}>
@@ -31,13 +66,14 @@ export const RamOverviewCard: React.FC<RamOverviewCardProps> = ({
     );
   }
 
-  const used = summary?.usedBytes ?? 0;
-  const total = summary?.totalBytes ?? 1;
-  const available = summary?.availableBytes ?? 0;
+  const used = summary.usedBytes ?? 0;
+  const total = summary.totalBytes ?? 1;
+  const available = summary.availableBytes ?? 0;
   const percentage = formatPercentage(used, total);
+  const isReal = !summary.isMock;
 
   const getPressureBadge = () => {
-    switch (summary?.pressureLevel) {
+    switch (summary.pressureLevel) {
       case 'critical':
         return { label: 'High Pressure', variant: 'error' as const };
       case 'moderate':
@@ -64,11 +100,15 @@ export const RamOverviewCard: React.FC<RamOverviewCardProps> = ({
           <View>
             <Text style={[Typography.h3, { color: theme.text }]}>Memory (RAM)</Text>
             <Text style={[Typography.bodySmall, { color: theme.textSecondary }]}>
-              {summary?.lastUpdated || 'Telemetry active'}
+              {summary.lastUpdated || 'Telemetry active'}
             </Text>
           </View>
         </View>
-        <Badge label="Mock Data" variant="warning" size="sm" />
+        <Badge
+          label={isReal ? 'ActivityManager' : 'Expo Go Fallback'}
+          variant={isReal ? 'success' : 'warning'}
+          size="sm"
+        />
       </View>
 
       <View style={styles.metricsRow}>
@@ -98,7 +138,7 @@ export const RamOverviewCard: React.FC<RamOverviewCardProps> = ({
         <View style={styles.progressLabelRow}>
           <View style={styles.badgeRow}>
             <Text style={[Typography.labelMedium, { color: theme.textSecondary }]}>
-              RAM Pressure:
+              RAM Allocation:
             </Text>
             <Badge label={pressure.label} variant={pressure.variant} size="sm" />
           </View>
@@ -108,6 +148,25 @@ export const RamOverviewCard: React.FC<RamOverviewCardProps> = ({
         </View>
         <ProgressBar percentage={percentage} height={10} color={theme.info} />
       </View>
+
+      {summary.isLowMemory && (
+        <View
+          style={[
+            styles.warningBox,
+            { backgroundColor: theme.errorContainer },
+          ]}
+        >
+          <Ionicons name="warning-outline" size={16} color={theme.onErrorContainer} />
+          <Text
+            style={[
+              Typography.bodySmall,
+              { color: theme.onErrorContainer, flex: 1 },
+            ]}
+          >
+            System is in Low Memory condition. Kernel LMK is reclaiming cached pages.
+          </Text>
+        </View>
+      )}
 
       <View
         style={[
@@ -148,6 +207,16 @@ export const RamOverviewCard: React.FC<RamOverviewCardProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginBottom: Spacing.four,
+  },
+  centerCard: {
+    padding: Spacing.five,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   headerRow: {
     flexDirection: 'row',
@@ -195,6 +264,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.two,
+    borderRadius: Radius.sm,
+    gap: Spacing.two,
+    marginVertical: Spacing.one,
   },
   noticeBox: {
     flexDirection: 'row',

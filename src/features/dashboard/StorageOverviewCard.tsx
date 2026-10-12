@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Card } from '@/components/Card';
@@ -13,28 +13,64 @@ import { Radius, Spacing, Typography } from '@/constants/theme';
 interface StorageOverviewCardProps {
   summary: StorageSummary | null;
   loading?: boolean;
+  error?: string | null;
+  onRefresh?: () => void;
 }
 
 export const StorageOverviewCard: React.FC<StorageOverviewCardProps> = ({
   summary,
   loading = false,
+  error,
+  onRefresh,
 }) => {
   const theme = useTheme();
 
-  if (!summary && !loading) {
+  if (loading && !summary) {
     return (
-      <Card style={styles.container}>
-        <Text style={[Typography.bodyMedium, { color: theme.textSecondary }]}>
-          Storage information unavailable.
+      <Card style={[styles.container, styles.centerCard]}>
+        <ActivityIndicator size="small" color={theme.primary} />
+        <Text style={[Typography.bodySmall, { color: theme.textSecondary, marginTop: Spacing.two }]}>
+          Querying Android storage filesystem...
         </Text>
       </Card>
     );
   }
 
-  const used = summary?.usedBytes ?? 0;
-  const total = summary?.totalBytes ?? 1;
-  const free = summary?.freeBytes ?? 0;
+  if (error && !summary) {
+    return (
+      <Card style={styles.container}>
+        <View style={styles.errorRow}>
+          <Ionicons name="alert-circle-outline" size={20} color={theme.error} />
+          <Text style={[Typography.labelMedium, { color: theme.error, flex: 1 }]}>
+            {error}
+          </Text>
+        </View>
+        {onRefresh && (
+          <Pressable onPress={onRefresh} style={{ marginTop: Spacing.two }}>
+            <Text style={[Typography.labelMedium, { color: theme.primary }]}>
+              Tap to Retry
+            </Text>
+          </Pressable>
+        )}
+      </Card>
+    );
+  }
+
+  if (!summary) {
+    return (
+      <Card style={styles.container}>
+        <Text style={[Typography.bodyMedium, { color: theme.textSecondary }]}>
+          Storage telemetry unavailable.
+        </Text>
+      </Card>
+    );
+  }
+
+  const used = summary.usedBytes ?? 0;
+  const total = summary.totalBytes ?? 1;
+  const free = summary.freeBytes ?? 0;
   const percentage = formatPercentage(used, total);
+  const isReal = !summary.isMock;
 
   return (
     <Card style={styles.container}>
@@ -51,11 +87,15 @@ export const StorageOverviewCard: React.FC<StorageOverviewCardProps> = ({
           <View>
             <Text style={[Typography.h3, { color: theme.text }]}>Device Storage</Text>
             <Text style={[Typography.bodySmall, { color: theme.textSecondary }]}>
-              {summary?.lastScanTimestamp ? `Scanned ${summary.lastScanTimestamp}` : 'Ready for scan'}
+              {summary.lastScanTimestamp}
             </Text>
           </View>
         </View>
-        <Badge label="Mock Data" variant="warning" size="sm" />
+        <Badge
+          label={isReal ? 'Android StatFs' : 'Expo Go Fallback'}
+          variant={isReal ? 'success' : 'warning'}
+          size="sm"
+        />
       </View>
 
       <View style={styles.metricsRow}>
@@ -95,7 +135,7 @@ export const StorageOverviewCard: React.FC<StorageOverviewCardProps> = ({
 
       {/* Category breakdown pills */}
       <View style={styles.categoriesGrid}>
-        {summary?.categories.slice(0, 4).map((cat) => (
+        {summary.categories.slice(0, 4).map((cat) => (
           <View
             key={cat.category}
             style={[
@@ -139,6 +179,16 @@ export const StorageOverviewCard: React.FC<StorageOverviewCardProps> = ({
 const styles = StyleSheet.create({
   container: {
     marginBottom: Spacing.four,
+  },
+  centerCard: {
+    padding: Spacing.five,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
   headerRow: {
     flexDirection: 'row',

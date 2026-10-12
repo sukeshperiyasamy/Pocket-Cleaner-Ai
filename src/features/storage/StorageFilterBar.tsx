@@ -10,8 +10,7 @@ interface StorageFilterBarProps {
   onSortChange: (sort: FileSortOption) => void;
   permissionSimulated: boolean;
   onTogglePermissionSimulation: () => void;
-  selectedCount: number;
-  totalCount: number;
+  isNativeAvailable: boolean;
 }
 
 export const StorageFilterBar: React.FC<StorageFilterBarProps> = ({
@@ -19,8 +18,7 @@ export const StorageFilterBar: React.FC<StorageFilterBarProps> = ({
   onSortChange,
   permissionSimulated,
   onTogglePermissionSimulation,
-  selectedCount,
-  totalCount,
+  isNativeAvailable,
 }) => {
   const theme = useTheme();
 
@@ -71,40 +69,42 @@ export const StorageFilterBar: React.FC<StorageFilterBarProps> = ({
       </View>
 
       <View style={styles.rightRow}>
-        {/* Permission simulation toggle */}
-        <Pressable
-          onPress={onTogglePermissionSimulation}
-          style={({ pressed }) => [
-            styles.button,
-            {
-              backgroundColor: permissionSimulated
-                ? theme.warningContainer
-                : theme.backgroundElement,
-              borderColor: permissionSimulated ? theme.warning : theme.border,
-            },
-            pressed && { opacity: 0.75 },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Toggle Android Permission-Denied State simulation"
-        >
-          <Ionicons
-            name={permissionSimulated ? 'lock-closed' : 'lock-open-outline'}
-            size={14}
-            color={permissionSimulated ? theme.onWarningContainer : theme.textSecondary}
-          />
-          <Text
-            style={[
-              Typography.labelSmall,
+        {/* Development-only permission test toggle */}
+        {!isNativeAvailable && (
+          <Pressable
+            onPress={onTogglePermissionSimulation}
+            style={({ pressed }) => [
+              styles.button,
               {
-                color: permissionSimulated
-                  ? theme.onWarningContainer
-                  : theme.textSecondary,
+                backgroundColor: permissionSimulated
+                  ? theme.warningContainer
+                  : theme.backgroundElement,
+                borderColor: permissionSimulated ? theme.warning : theme.border,
               },
+              pressed && { opacity: 0.75 },
             ]}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle Android Permission-Denied State simulation"
           >
-            {permissionSimulated ? 'Simulating Denied State' : 'Test Restricted State'}
-          </Text>
-        </Pressable>
+            <Ionicons
+              name={permissionSimulated ? 'lock-closed' : 'lock-open-outline'}
+              size={14}
+              color={permissionSimulated ? theme.onWarningContainer : theme.textSecondary}
+            />
+            <Text
+              style={[
+                Typography.labelSmall,
+                {
+                  color: permissionSimulated
+                    ? theme.onWarningContainer
+                    : theme.textSecondary,
+                },
+              ]}
+            >
+              {permissionSimulated ? 'Dev: Denied State' : 'Dev: Test UI'}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );

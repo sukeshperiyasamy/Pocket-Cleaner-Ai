@@ -30,16 +30,26 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
+
+  const isNative = storageService.isNativeAvailable();
 
   const fetchDashboardData = useCallback(async () => {
     try {
       const [storageData, memoryData, scanData] = await Promise.all([
-        getStorageSummary(),
-        getMemorySummary(),
+        getStorageSummary().catch((e) => {
+          setStorageError('Could not query storage filesystem: ' + e.message);
+          return null;
+        }),
+        getMemorySummary().catch((e) => {
+          setMemoryError('Could not query system memory: ' + e.message);
+          return null;
+        }),
         getRecentScans(),
       ]);
-      setStorage(storageData);
-      setMemory(memoryData);
+      if (storageData) setStorage(storageData);
+      if (memoryData) setMemory(memoryData);
       setScans(scanData);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
@@ -52,14 +62,20 @@ export default function DashboardScreen() {
   useEffect(() => {
     let active = true;
     Promise.all([
-      getStorageSummary(),
-      getMemorySummary(),
+      getStorageSummary().catch((e) => {
+        if (active) setStorageError('Could not query storage filesystem: ' + e.message);
+        return null;
+      }),
+      getMemorySummary().catch((e) => {
+        if (active) setMemoryError('Could not query system memory: ' + e.message);
+        return null;
+      }),
       getRecentScans(),
     ])
       .then(([storageData, memoryData, scanData]) => {
         if (!active) return;
-        setStorage(storageData);
-        setMemory(memoryData);
+        if (storageData) setStorage(storageData);
+        if (memoryData) setMemory(memoryData);
         setScans(scanData);
         setLoading(false);
       })
@@ -75,6 +91,8 @@ export default function DashboardScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    setStorageError(null);
+    setMemoryError(null);
     fetchDashboardData();
   }, [fetchDashboardData]);
 
@@ -114,13 +132,17 @@ export default function DashboardScreen() {
           {/* Header */}
           <Header
             title="Offline AI Phone Assistant"
-            subtitle="Private, on-device storage & memory inspector"
-            badgeText="100% Offline"
-            badgeVariant="ai"
+            subtitle="Android native storage & memory inspector"
+            badgeText={isNative ? 'Native Build Active' : 'Expo Go Preview'}
+            badgeVariant={isNative ? 'success' : 'warning'}
           />
 
-          {/* Prominent Mock Data Banner */}
-          <MockBanner />
+          {/* Banner: Only show mock notice if not running native build */}
+          {!isNative ? (
+            <MockBanner customMessage="Running in Expo Go sandbox. Storage and RAM values above are simulated fallbacks. Build with `npx expo run:android` to view real physical phone measurements." />
+          ) : (
+            <MockBanner customMessage="Phase 2 Active: Storage and RAM readings are measured live from your Android device using StatFs and ActivityManager. File deletion remains strictly disabled." />
+          )}
 
           {/* Quick Actions */}
           <QuickActions
@@ -129,10 +151,20 @@ export default function DashboardScreen() {
           />
 
           {/* Storage Overview Card */}
-          <StorageOverviewCard summary={storage} loading={loading} />
+          <StorageOverviewCard
+            summary={storage}
+            loading={loading}
+            error={storageError}
+            onRefresh={fetchDashboardData}
+          />
 
           {/* RAM Overview Card */}
-          <RamOverviewCard summary={memory} loading={loading} />
+          <RamOverviewCard
+            summary={memory}
+            loading={loading}
+            error={memoryError}
+            onRefresh={fetchDashboardData}
+          />
 
           {/* Recent Scans Section */}
           <RecentScansSection scans={scans} loading={loading} />

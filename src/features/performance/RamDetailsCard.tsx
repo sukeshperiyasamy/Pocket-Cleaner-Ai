@@ -71,7 +71,11 @@ export const RamDetailsCard: React.FC<RamDetailsCardProps> = ({ summary }) => {
             </Text>
           </View>
         </View>
-        <Badge label="Mock AOSP" variant="warning" size="sm" />
+        <Badge
+          label={summary?.isMock ? 'Expo Go Fallback' : 'ActivityManager'}
+          variant={summary?.isMock ? 'warning' : 'success'}
+          size="sm"
+        />
       </View>
 
       {/* Primary Metrics Grid */}
@@ -120,10 +124,38 @@ export const RamDetailsCard: React.FC<RamDetailsCardProps> = ({ summary }) => {
             {formatBytes(appUsage)}
           </Text>
           <Text style={[Typography.labelSmall, { color: theme.textMuted }]}>
-            Lightweight Footprint
+            Runtime Heap Usage
           </Text>
         </View>
       </View>
+
+      {/* Kernel LMK Status Row */}
+      {summary && (
+        <View style={[styles.kernelRow, { backgroundColor: theme.surfaceSubtle }]}>
+          <View style={styles.kernelMetric}>
+            <Text style={[Typography.labelSmall, { color: theme.textMuted }]}>
+              Kernel LMK Threshold
+            </Text>
+            <Text style={[Typography.labelMedium, { color: theme.text }]}>
+              {summary.thresholdBytes ? formatBytes(summary.thresholdBytes) : 'N/A'}
+            </Text>
+          </View>
+          <View style={styles.kernelDivider} />
+          <View style={styles.kernelMetric}>
+            <Text style={[Typography.labelSmall, { color: theme.textMuted }]}>
+              Low Memory State
+            </Text>
+            <Text
+              style={[
+                Typography.labelMedium,
+                { color: summary.isLowMemory ? theme.error : theme.success },
+              ]}
+            >
+              {summary.isLowMemory ? 'Triggered (Critical)' : 'Normal (Optimal)'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Progress & Pressure Level */}
       <View style={styles.progressSection}>
@@ -214,5 +246,22 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Radius.md,
     marginTop: Spacing.two,
+  },
+  kernelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.md,
+    marginBottom: Spacing.two,
+  },
+  kernelMetric: {
+    alignItems: 'center',
+  },
+  kernelDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(128, 128, 128, 0.2)',
   },
 });

@@ -25,6 +25,7 @@ export interface StorageItem {
   lastModified: string;
   isSafeToReview: boolean;
   description?: string;
+  contentUri?: string;
   isMock: boolean;
 }
 
@@ -35,6 +36,11 @@ export interface StorageSummary {
   categories: StorageCategoryDetail[];
   isMock: boolean;
   lastScanTimestamp: string;
+  isAppAccessibleOnly?: boolean;
+  storagePath?: string;
+  externalTotalBytes?: number;
+  externalAvailableBytes?: number;
+  hasPermission?: boolean;
 }
 
 export type FileSortOption = 'size_desc' | 'size_asc' | 'date_desc' | 'name_asc';

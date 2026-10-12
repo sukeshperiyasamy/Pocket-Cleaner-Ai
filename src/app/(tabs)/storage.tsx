@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   ScrollView,
   StyleSheet,
   Text,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '@/components/Header';
@@ -33,26 +35,71 @@ export default function StorageScreen() {
   const [activeFilter, setActiveFilter] = useState<FileFilterOption>('all');
   const [sortOption, setSortOption] = useState<FileSortOption>('size_desc');
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [hasPermission, setHasPermission] = useState<boolean>(true);
   const [permissionDeniedSimulated, setPermissionDeniedSimulated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const isNative = storageService.isNativeAvailable();
+
+  const loadStorageFiles = useCallback(async () => {
+    try {
+      const permGranted = await storageService.hasStoragePermission();
+      setHasPermission(permGranted);
+
+      const [cats, files] = await Promise.all([
+        storageService.getStorageCategories(),
+        findLargeFiles(0, 50),
+      ]);
+      setCategories(cats);
+      setAllFiles(files);
+    } catch (err) {
+      console.error('Error fetching storage files:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function loadStorageFiles() {
+    let active = true;
+    (async () => {
       try {
+        const permGranted = await storageService.hasStoragePermission();
+        if (!active) return;
+        setHasPermission(permGranted);
+
         const [cats, files] = await Promise.all([
           storageService.getStorageCategories(),
           findLargeFiles(0, 50),
         ]);
+        if (!active) return;
         setCategories(cats);
         setAllFiles(files);
       } catch (err) {
         console.error('Error fetching storage files:', err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
-    }
-    loadStorageFiles();
+    })();
+
+    return () => {
+      active = false;
+    };
   }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadStorageFiles();
+  }, [loadStorageFiles]);
+
+  const handleRequestPermission = async () => {
+    const granted = await storageService.requestPermission();
+    setHasPermission(granted);
+    if (granted) {
+      loadStorageFiles();
+    }
+  };
 
   // Filter & sort
   const filteredAndSortedFiles = useMemo(() => {
@@ -111,6 +158,8 @@ export default function StorageScreen() {
     return selectedFilesList.reduce((sum, f) => sum + f.sizeBytes, 0);
   }, [selectedFilesList]);
 
+  const showPermissionDenied = (!hasPermission && isNative) || permissionDeniedSimulated;
+
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: theme.background }]}
@@ -120,27 +169,39 @@ export default function StorageScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.primary}
+            colors={[theme.primary]}
+          />
+        }
       >
         <View style={styles.inner}>
           {/* Header */}
           <Header
             title="Storage Explorer"
-            subtitle="Categorized breakdown & large files inspection"
-            badgeText="Sample Files"
-            badgeVariant="warning"
+            subtitle="Android MediaStore media inspection & candidate review"
+            badgeText={isNative ? 'Live MediaStore' : 'Sample Fixtures'}
+            badgeVariant={isNative ? 'success' : 'warning'}
           />
 
-          <MockBanner customMessage="File entries below are simulated Android fixtures. In Phase 2, this explorer will connect to the Android MediaStore and Storage Access Framework (SAF) for user-permissioned inspection." />
+          {!isNative ? (
+            <MockBanner customMessage="Running in Expo Go sandbox. Files below are simulated fixtures. In a custom development build, MediaStore queries real device videos, photos, and audio." />
+          ) : (
+            <MockBanner customMessage="Phase 2 Active: Files are queried live from Android MediaStore using size-based bounded cursors. No destructive deletion is implemented." />
+          )}
 
-          {/* Permission-Denied Simulated State */}
-          {permissionDeniedSimulated ? (
+          {/* Permission-Denied State */}
+          {showPermissionDenied ? (
             <EmptyState
               type="permission"
               icon="lock-closed"
-              title="Storage Permission Denied"
-              description="On Android 11+ (API 30+), broad file access requires user authorization or MediaStore scoped access. In this Phase 1 MVP, no real permissions are requested."
-              actionLabel="Switch Back to Sample Data"
-              onAction={() => setPermissionDeniedSimulated(false)}
+              title="Media Permission Required"
+              description="To inspect your device storage for large videos, images, and audio files, Android requires user authorization for MediaStore read access. No private app documents or system files are inspected."
+              actionLabel="Grant Media Permission"
+              onAction={handleRequestPermission}
             />
           ) : (
             <>
@@ -159,15 +220,26 @@ export default function StorageScreen() {
                 onTogglePermissionSimulation={() =>
                   setPermissionDeniedSimulated(!permissionDeniedSimulated)
                 }
-                selectedCount={selectedIds.size}
-                totalCount={filteredAndSortedFiles.length}
+                isNativeAvailable={isNative}
               />
 
-              {/* Empty state if filter has no files */}
-              {filteredAndSortedFiles.length === 0 && !loading ? (
+              {/* Loading State */}
+              {loading && allFiles.length === 0 ? (
+                <View style={styles.loadingWrapper}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                  <Text
+                    style={[
+                      Typography.bodySmall,
+                      { color: theme.textSecondary, marginTop: Spacing.two },
+                    ]}
+                  >
+                    Querying device MediaStore...
+                  </Text>
+                </View>
+              ) : filteredAndSortedFiles.length === 0 ? (
                 <EmptyState
-                  title="No Files Found"
-                  description="No sample files match the current category filter."
+                  title="No Large Files Found"
+                  description="No media files matching the current category were found on this device."
                   actionLabel="Show All Categories"
                   onAction={() => setActiveFilter('all')}
                 />
@@ -187,7 +259,7 @@ export default function StorageScreen() {
       </ScrollView>
 
       {/* Floating Selection Bar for Future Cleanup Preview */}
-      {selectedIds.size > 0 && !permissionDeniedSimulated && (
+      {selectedIds.size > 0 && !showPermissionDenied && (
         <View
           style={[
             styles.floatingBar,
@@ -240,6 +312,11 @@ const styles = StyleSheet.create({
   inner: {
     width: '100%',
     maxWidth: MaxContentWidth,
+  },
+  loadingWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.six,
   },
   floatingBar: {
     position: 'absolute',

@@ -7,6 +7,8 @@ export interface MemorySummary {
   appUsageBytes: number;
   pressureLevel: MemoryPressureLevel;
   pressurePercentage: number;
+  thresholdBytes?: number;
+  isLowMemory?: boolean;
   isMock: boolean;
   lastUpdated: string;
 }
