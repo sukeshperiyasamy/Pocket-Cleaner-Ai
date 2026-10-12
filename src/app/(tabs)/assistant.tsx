@@ -1,0 +1,151 @@
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  StyleSheet,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Header } from '@/components/Header';
+import { MockBanner } from '@/components/MockBanner';
+import { ChatMessageItem } from '@/features/assistant/ChatMessageItem';
+import { PromptChips } from '@/features/assistant/PromptChips';
+import { ChatInputBar } from '@/features/assistant/ChatInputBar';
+import { assistantService, sendAssistantMessage } from '@/services';
+import { ChatMessage, PromptSuggestion } from '@/types';
+import { MOCK_INITIAL_MESSAGES } from '@/constants/mockData';
+import { useTheme } from '@/hooks/use-theme';
+import { Spacing, MaxContentWidth } from '@/constants/theme';
+
+export default function AssistantScreen() {
+  const theme = useTheme();
+  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_INITIAL_MESSAGES);
+  const [suggestions] = useState<PromptSuggestion[]>(() =>
+    assistantService.getSuggestedPrompts()
+  );
+  const [sending, setSending] = useState(false);
+  const flatListRef = useRef<FlatList<ChatMessage>>(null);
+
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim() || sending) return;
+
+    const userMessage: ChatMessage = {
+      id: `usr-${Date.now()}`,
+      sender: 'user',
+      text: text.trim(),
+      timestamp: 'Just now',
+      isMock: false,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setSending(true);
+
+    try {
+      const response = await sendAssistantMessage(text.trim());
+
+      const assistantMessage: ChatMessage = {
+        id: `ast-${Date.now()}`,
+        sender: 'assistant',
+        text: response.text,
+        timestamp: 'Just now',
+        isMock: response.isMock,
+        suggestedAction: response.suggestedAction,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch {
+      const errorMessage: ChatMessage = {
+        id: `err-${Date.now()}`,
+        sender: 'assistant',
+        text: 'Error processing your query. Please try again.',
+        timestamp: 'Just now',
+        isMock: true,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages]);
+
+  return (
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: theme.background }]}
+      edges={['top', 'left', 'right']}
+    >
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={styles.headerWrapper}>
+            <Header
+              title="AI Assistant"
+              subtitle="Rule-based offline mock assistant (Phase 1)"
+              badgeText="Local Engine"
+              badgeVariant="ai"
+            />
+            <MockBanner customMessage="Assistant responses are mock simulations created by a local rule engine. In Phase 2, this chat service connects directly to on-device LLM inference (e.g. ExecuTorch / llama.cpp)." />
+          </View>
+
+          {/* Messages List */}
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <ChatMessageItem message={item} />}
+            contentContainerStyle={styles.messagesList}
+            showsVerticalScrollIndicator={false}
+          />
+
+          {/* Suggested Prompts Bar */}
+          <View style={styles.promptsWrapper}>
+            <PromptChips
+              suggestions={suggestions}
+              onSelectPrompt={handleSendMessage}
+              disabled={sending}
+            />
+          </View>
+
+          {/* Input Bar */}
+          <ChatInputBar onSend={handleSendMessage} loading={sending} />
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
+  keyboardAvoid: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: MaxContentWidth,
+  },
+  headerWrapper: {
+    paddingHorizontal: Spacing.four,
+  },
+  messagesList: {
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.three,
+  },
+  promptsWrapper: {
+    paddingHorizontal: Spacing.four,
+  },
+});
