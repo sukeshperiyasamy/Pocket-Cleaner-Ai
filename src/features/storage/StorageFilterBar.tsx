@@ -4,21 +4,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { FileSortOption } from '@/types';
 import { useTheme } from '@/hooks/use-theme';
 import { Radius, Spacing, Typography } from '@/constants/theme';
+import { formatBytes } from '@/utils/formatters';
+
+export type ViewMode = 'list' | 'grid';
 
 interface StorageFilterBarProps {
   sortOption: FileSortOption;
   onSortChange: (sort: FileSortOption) => void;
-  permissionSimulated: boolean;
-  onTogglePermissionSimulation: () => void;
-  isNativeAvailable: boolean;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
+  minSizeBytes: number;
+  onMinSizeBytesChange: (bytes: number) => void;
+  showViewToggle?: boolean;
 }
 
 export const StorageFilterBar: React.FC<StorageFilterBarProps> = ({
   sortOption,
   onSortChange,
-  permissionSimulated,
-  onTogglePermissionSimulation,
-  isNativeAvailable,
+  viewMode,
+  onViewModeChange,
+  minSizeBytes,
+  onMinSizeBytesChange,
+  showViewToggle = true,
 }) => {
   const theme = useTheme();
 
@@ -29,7 +36,11 @@ export const StorageFilterBar: React.FC<StorageFilterBarProps> = ({
       case 'size_asc':
         return onSortChange('date_desc');
       case 'date_desc':
+        return onSortChange('date_asc');
+      case 'date_asc':
         return onSortChange('name_asc');
+      case 'name_asc':
+        return onSortChange('name_desc');
       default:
         return onSortChange('size_desc');
     }
@@ -42,20 +53,36 @@ export const StorageFilterBar: React.FC<StorageFilterBarProps> = ({
       case 'size_asc':
         return 'Size: Smallest First';
       case 'date_desc':
-        return 'Date: Newest First';
+        return 'Date: Newest';
+      case 'date_asc':
+        return 'Date: Oldest';
       case 'name_asc':
         return 'Name: A-Z';
+      case 'name_desc':
+        return 'Name: Z-A';
+      default:
+        return 'Size: Largest First';
+    }
+  };
+
+  const toggleSizeFilter = () => {
+    if (minSizeBytes === 0) {
+      onMinSizeBytesChange(50 * 1024 * 1024); // 50MB
+    } else {
+      onMinSizeBytesChange(0); // All files
     }
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.leftRow}>
+      {/* Top Controls Row */}
+      <View style={styles.topRow}>
+        {/* Sort Button */}
         <Pressable
           onPress={cycleSort}
           style={({ pressed }) => [
             styles.button,
-            { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+            { backgroundColor: theme.surface, borderColor: theme.border },
             pressed && { opacity: 0.75 },
           ]}
           accessibilityRole="button"
@@ -66,73 +93,136 @@ export const StorageFilterBar: React.FC<StorageFilterBarProps> = ({
             {getSortLabel()}
           </Text>
         </Pressable>
-      </View>
 
-      <View style={styles.rightRow}>
-        {/* Development-only permission test toggle */}
-        {!isNativeAvailable && (
-          <Pressable
-            onPress={onTogglePermissionSimulation}
-            style={({ pressed }) => [
-              styles.button,
-              {
-                backgroundColor: permissionSimulated
-                  ? theme.warningContainer
-                  : theme.backgroundElement,
-                borderColor: permissionSimulated ? theme.warning : theme.border,
-              },
-              pressed && { opacity: 0.75 },
+        {/* Size Filter Toggle */}
+        <Pressable
+          onPress={toggleSizeFilter}
+          style={({ pressed }) => [
+            styles.button,
+            {
+              backgroundColor: minSizeBytes > 0 ? theme.primaryContainer : theme.surface,
+              borderColor: minSizeBytes > 0 ? theme.primary : theme.border,
+            },
+            pressed && { opacity: 0.75 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle size filter"
+        >
+          <Ionicons
+            name="funnel-outline"
+            size={14}
+            color={minSizeBytes > 0 ? theme.onPrimaryContainer : theme.textSecondary}
+          />
+          <Text
+            style={[
+              Typography.labelSmall,
+              { color: minSizeBytes > 0 ? theme.onPrimaryContainer : theme.text },
             ]}
-            accessibilityRole="button"
-            accessibilityLabel="Toggle Android Permission-Denied State simulation"
           >
-            <Ionicons
-              name={permissionSimulated ? 'lock-closed' : 'lock-open-outline'}
-              size={14}
-              color={permissionSimulated ? theme.onWarningContainer : theme.textSecondary}
-            />
-            <Text
+            {minSizeBytes > 0 ? `>${formatBytes(minSizeBytes)}` : 'All Sizes'}
+          </Text>
+        </Pressable>
+
+        {/* View Mode Toggle (Grid vs List) */}
+        {showViewToggle && (
+          <View style={[styles.viewToggleGroup, { borderColor: theme.border }]}>
+            <Pressable
+              onPress={() => onViewModeChange('list')}
               style={[
-                Typography.labelSmall,
-                {
-                  color: permissionSimulated
-                    ? theme.onWarningContainer
-                    : theme.textSecondary,
-                },
+                styles.viewToggleBtn,
+                viewMode === 'list' && { backgroundColor: theme.primaryContainer },
               ]}
+              accessibilityRole="button"
+              accessibilityLabel="List View"
             >
-              {permissionSimulated ? 'Dev: Denied State' : 'Dev: Test UI'}
-            </Text>
-          </Pressable>
+              <Ionicons
+                name="list"
+                size={16}
+                color={viewMode === 'list' ? theme.onPrimaryContainer : theme.textSecondary}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => onViewModeChange('grid')}
+              style={[
+                styles.viewToggleBtn,
+                viewMode === 'grid' && { backgroundColor: theme.primaryContainer },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Grid View"
+            >
+              <Ionicons
+                name="grid"
+                size={16}
+                color={viewMode === 'grid' ? theme.onPrimaryContainer : theme.textSecondary}
+              />
+            </Pressable>
+          </View>
         )}
       </View>
+
+      {/* Active Filter Criteria Pill with Clear Option */}
+      {minSizeBytes > 0 && (
+        <View style={styles.filterPillRow}>
+          <View style={[styles.filterPill, { backgroundColor: theme.primaryContainer, borderColor: theme.primary }]}>
+            <Text style={[Typography.labelSmall, { color: theme.onPrimaryContainer }]}>
+              Filtered: Files &gt; {formatBytes(minSizeBytes)}
+            </Text>
+            <Pressable
+              onPress={() => onMinSizeBytesChange(0)}
+              hitSlop={8}
+              accessibilityLabel="Clear size filter"
+            >
+              <Ionicons name="close-circle" size={16} color={theme.onPrimaryContainer} />
+            </Pressable>
+          </View>
+        </View>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginVertical: Spacing.two,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.two,
-  },
-  leftRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-    borderRadius: Radius.sm,
+    paddingVertical: 7,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+  },
+  viewToggleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  viewToggleBtn: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 6,
+  },
+  filterPillRow: {
+    flexDirection: 'row',
+    marginTop: Spacing.two,
+  },
+  filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
     borderWidth: 1,
   },
 });

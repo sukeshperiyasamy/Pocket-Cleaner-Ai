@@ -4,21 +4,37 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/hooks/use-theme';
 import { Typography } from '@/constants/theme';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const baseHeight = Platform.OS === 'android' ? 62 : 54;
+  const bottomInset = insets.bottom;
+  const bottomPadding =
+    bottomInset > 0
+      ? bottomInset + (Platform.OS === 'android' ? 4 : 2)
+      : Platform.OS === 'android'
+      ? 8
+      : 10;
+  const totalHeight =
+    baseHeight + (bottomInset > 0 ? bottomInset : Platform.OS === 'android' ? 8 : 10);
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        freezeOnBlur: true,
+        lazy: true,
         tabBarActiveTintColor: theme.tabBarActive,
         tabBarInactiveTintColor: theme.tabBarInactive,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: {
           backgroundColor: theme.tabBarBackground,
           borderTopColor: theme.tabBarBorder,
-          height: Platform.OS === 'android' ? 68 : 74,
-          paddingBottom: Platform.OS === 'android' ? 10 : 20,
+          height: totalHeight,
+          paddingBottom: bottomPadding,
           paddingTop: 8,
           borderTopWidth: 1,
           elevation: 8,

@@ -26,7 +26,11 @@ export const RecentScansSection: React.FC<RecentScansSectionProps> = ({
         <Text style={[Typography.h3, { color: theme.text }]}>
           Recent Scans
         </Text>
-        <Badge label="Sample Log" variant="neutral" size="sm" />
+        <Badge
+          label={scans.some((s) => !s.isMock) ? 'Live Log' : 'Sample Log'}
+          variant={scans.some((s) => !s.isMock) ? 'success' : 'neutral'}
+          size="sm"
+        />
       </View>
 
       {scans.length === 0 && !loading ? (

@@ -24,15 +24,15 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
       </Text>
 
       <View style={styles.actionsGrid}>
-        {/* Action 1: Scan Storage */}
+        {/* Action 1: Deep Storage Analyzer */}
         <Pressable
-          onPress={onScanStorage}
+          onPress={() => router.push('/deep-cleanup')}
           style={({ pressed }) => [
             styles.actionCardWrapper,
             pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Scan Storage"
+          accessibilityLabel="Deep Storage Analyzer"
         >
           <Card style={styles.actionCard} variant="outlined">
             <View
@@ -42,19 +42,19 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
               ]}
             >
               <Ionicons
-                name={scanning ? 'sync' : 'scan-outline'}
+                name="scan-outline"
                 size={22}
                 color={theme.primary}
               />
             </View>
             <Text style={[Typography.labelLarge, { color: theme.text }]}>
-              {scanning ? 'Scanning...' : 'Scan Storage'}
+              Deep Cleaner
             </Text>
             <Text
               style={[Typography.bodySmall, { color: theme.textSecondary }]}
               numberOfLines={2}
             >
-              Simulate large file discovery
+              Screenshots, APKs &amp; SAF
             </Text>
           </Card>
         </Pressable>

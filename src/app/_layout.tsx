@@ -4,6 +4,8 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
 
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
 // Prevent native splash screen from auto-hiding before initialization
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -20,11 +22,14 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ThemeProvider value={theme}>
-      <StatusBar style={colorScheme === 'light' ? 'dark' : 'light'} />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider value={theme}>
+        <StatusBar style={colorScheme === 'light' ? 'dark' : 'light'} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="deep-cleanup" options={{ headerShown: false }} />
+        </Stack>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }

@@ -77,7 +77,7 @@ export const AppInfoCard: React.FC<AppInfoCardProps> = ({ metadata }) => {
             { color: theme.textMuted, flex: 1 },
           ]}
         >
-          Phase 1 Foundation • Built with React Native & Expo Router.
+          Phase 2 • Native Android Storage & Memory Telemetry Active.
         </Text>
       </View>
     </Card>

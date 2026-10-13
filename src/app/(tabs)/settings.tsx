@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '@/components/Header';
-import { MockBanner } from '@/components/MockBanner';
 import { LocalAIStatusCard } from '@/features/settings/LocalAIStatusCard';
 import { ModelManagementCard } from '@/features/settings/ModelManagementCard';
 import { PrivacyGuaranteesCard } from '@/features/settings/PrivacyGuaranteesCard';
 import { AppInfoCard } from '@/features/settings/AppInfoCard';
+import { NativeDiagnosticsCard } from '@/features/settings/NativeDiagnosticsCard';
 import { settingsService } from '@/services';
 import { LocalAIModelInfo, AppMetadata } from '@/types';
 import { useTheme } from '@/hooks/use-theme';
@@ -50,7 +50,8 @@ export default function SettingsScreen() {
             badgeVariant="primary"
           />
 
-          <MockBanner customMessage="Phase 1 Settings View. No personal data, telemetry keys, or credentials are required or stored." />
+          {/* Native Diagnostics (Phase 2 Verification) */}
+          <NativeDiagnosticsCard />
 
           {/* Local AI Status */}
           {modelInfo && <LocalAIStatusCard modelInfo={modelInfo} />}

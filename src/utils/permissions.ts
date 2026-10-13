@@ -10,7 +10,8 @@ export async function checkMediaPermissions(): Promise<boolean> {
   }
 
   // If native module is available, use its direct check
-  if (isNativeModuleAvailable && DeviceMetricsModule) {
+  const isAvailable = typeof isNativeModuleAvailable === 'function' ? isNativeModuleAvailable() : Boolean(isNativeModuleAvailable);
+  if (isAvailable && DeviceMetricsModule) {
     try {
       const res = await DeviceMetricsModule.checkStoragePermissions();
       return res.hasPermission;

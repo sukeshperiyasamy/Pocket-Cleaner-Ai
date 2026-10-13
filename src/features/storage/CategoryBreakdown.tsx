@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { StorageCategoryDetail, FileFilterOption } from '@/types';
+import { StorageCategoryDetail, FileFilterOption, StorageCategory } from '@/types';
 import { formatBytes } from '@/utils/formatters';
 import { useTheme } from '@/hooks/use-theme';
 import { Radius, Spacing, Typography } from '@/constants/theme';
@@ -10,14 +10,33 @@ interface CategoryBreakdownProps {
   categories: StorageCategoryDetail[];
   activeFilter: FileFilterOption;
   onSelectCategory: (filter: FileFilterOption) => void;
+  allFilesTotalBytes?: number;
 }
+
+const DEFAULT_CATEGORIES: { category: StorageCategory; name: string; icon: keyof typeof Ionicons.glyphMap; color: string }[] = [
+  { category: 'images', name: 'Photos', icon: 'image-outline', color: '#3B82F6' },
+  { category: 'videos', name: 'Videos', icon: 'videocam-outline', color: '#EF4444' },
+  { category: 'audio', name: 'Audio', icon: 'musical-notes-outline', color: '#10B981' },
+  { category: 'downloads', name: 'Downloads', icon: 'download-outline', color: '#8B5CF6' },
+];
 
 export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({
   categories,
   activeFilter,
   onSelectCategory,
+  allFilesTotalBytes,
 }) => {
   const theme = useTheme();
+
+  // Merge live categories with defaults so all tabs are accessible
+  const mergedCategories = DEFAULT_CATEGORIES.map((def) => {
+    const live = categories.find((c) => c.category === def.category);
+    return {
+      ...def,
+      sizeBytes: live ? live.sizeBytes : 0,
+      fileCount: live ? live.fileCount : 0,
+    };
+  });
 
   return (
     <View style={styles.container}>
@@ -66,10 +85,25 @@ export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({
           >
             All Files
           </Text>
+          {allFilesTotalBytes !== undefined && allFilesTotalBytes > 0 && (
+            <Text
+              style={[
+                Typography.labelSmall,
+                {
+                  color:
+                    activeFilter === 'all'
+                      ? theme.onPrimaryContainer
+                      : theme.textMuted,
+                },
+              ]}
+            >
+              ({formatBytes(allFilesTotalBytes)})
+            </Text>
+          )}
         </Pressable>
 
         {/* Specific categories */}
-        {categories.map((cat) => {
+        {mergedCategories.map((cat) => {
           const isSelected = activeFilter === cat.category;
           return (
             <Pressable
@@ -89,6 +123,11 @@ export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({
               accessibilityLabel={`Filter by ${cat.name}`}
             >
               <View style={[styles.dot, { backgroundColor: cat.color }]} />
+              <Ionicons
+                name={cat.icon}
+                size={14}
+                color={isSelected ? theme.onPrimaryContainer : theme.textSecondary}
+              />
               <Text
                 style={[
                   Typography.labelMedium,
@@ -101,18 +140,20 @@ export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({
               >
                 {cat.name}
               </Text>
-              <Text
-                style={[
-                  Typography.labelSmall,
-                  {
-                    color: isSelected
-                      ? theme.onPrimaryContainer
-                      : theme.textMuted,
-                  },
-                ]}
-              >
-                ({formatBytes(cat.sizeBytes)})
-              </Text>
+              {cat.sizeBytes > 0 && (
+                <Text
+                  style={[
+                    Typography.labelSmall,
+                    {
+                      color: isSelected
+                        ? theme.onPrimaryContainer
+                        : theme.textMuted,
+                    },
+                  ]}
+                >
+                  ({formatBytes(cat.sizeBytes)})
+                </Text>
+              )}
             </Pressable>
           );
         })}

@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl, Text } from 'react-native';
+import { View, ScrollView, StyleSheet, RefreshControl, Text, InteractionManager } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '@/components/Header';
-import { MockBanner } from '@/components/MockBanner';
+import { DataSourceIndicator } from '@/components/DataSourceIndicator';
 import { Button } from '@/components/Button';
 import { RamDetailsCard } from '@/features/performance/RamDetailsCard';
 import { AndroidMemoryArchitectureCard } from '@/features/performance/AndroidMemoryArchitectureCard';
 import { RecommendationsList } from '@/features/performance/RecommendationsList';
 import { getMemorySummary, memoryService } from '@/services';
-import { MemorySummary, MemoryRecommendation } from '@/types';
+import { MemorySummary, MemoryRecommendation, DataSourceStatus } from '@/types';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing, MaxContentWidth, Typography } from '@/constants/theme';
 
@@ -19,34 +19,43 @@ export default function PerformanceScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const memoryStatus: DataSourceStatus =
+    memory?.dataSourceStatus ||
+    (error ? 'unavailable' : memory?.isMock ? 'simulated' : 'live');
+
   useEffect(() => {
     let active = true;
-    Promise.all([
-      getMemorySummary(),
-      memoryService.getMemoryRecommendations(),
-    ])
-      .then(([mem, recs]) => {
-        if (!active) return;
-        setMemory(mem);
-        setRecommendations(recs);
-      })
-      .catch((err: any) => {
-        if (!active) return;
-        console.error('Failed to load performance metrics:', err);
-        setError(err?.message || 'Failed to query system memory.');
-      });
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      Promise.all([
+        getMemorySummary(),
+        memoryService.getMemoryRecommendations(),
+      ])
+        .then(([mem, recs]) => {
+          if (!active) return;
+          setMemory(mem);
+          setRecommendations(recs);
+        })
+        .catch((err: any) => {
+          if (!active) return;
+          console.error('Failed to load performance metrics:', err);
+          setError(err?.message || 'Failed to query system memory.');
+        });
+    });
 
     return () => {
       active = false;
+      task.cancel();
     };
   }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
+    memoryService.invalidateCache();
     try {
       const [mem, recs] = await Promise.all([
-        getMemorySummary(),
+        getMemorySummary(true),
         memoryService.getMemoryRecommendations(),
       ]);
       setMemory(mem);
@@ -82,8 +91,29 @@ export default function PerformanceScreen() {
           <Header
             title="Performance Insights"
             subtitle="Android system telemetry & honest memory management"
-            badgeText={memory?.isMock ? 'Simulated' : 'ActivityManager'}
-            badgeVariant={memory?.isMock ? 'warning' : 'success'}
+            badgeText={
+              memoryStatus === 'live'
+                ? 'LIVE DEVICE DATA'
+                : memoryStatus === 'unavailable'
+                ? 'UNAVAILABLE'
+                : 'SIMULATED DATA'
+            }
+            badgeVariant={
+              memoryStatus === 'live'
+                ? 'success'
+                : memoryStatus === 'unavailable'
+                ? 'error'
+                : 'warning'
+            }
+          />
+
+          {/* Data Source Indicator */}
+          <DataSourceIndicator
+            status={memoryStatus}
+            sourceName="Android ActivityManager.MemoryInfo"
+            timestamp={memory?.lastUpdated}
+            errorMessage={memory?.dataSourceError || error}
+            onRetry={onRefresh}
           />
 
           {error && (
@@ -95,14 +125,10 @@ export default function PerformanceScreen() {
                 label="Retry"
                 size="sm"
                 variant="outlined"
-                onPress={loadPerformanceData}
+                onPress={onRefresh}
                 style={{ marginTop: Spacing.two }}
               />
             </View>
-          )}
-
-          {memory?.isMock && (
-            <MockBanner customMessage="RAM figures shown are simulated AOSP metrics because the app is running in the Expo Go sandbox. In a custom development build, real telemetry is queried via the native Kotlin DeviceMetricsModule." />
           )}
 
           {/* RAM Breakdown & Pressure */}

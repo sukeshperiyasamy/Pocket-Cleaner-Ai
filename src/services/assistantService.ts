@@ -1,24 +1,30 @@
 import { AssistantResponse, PromptSuggestion } from '@/types';
 import { MOCK_PROMPT_SUGGESTIONS } from '@/constants/mockData';
-import { storageService } from './storageService';
-import { memoryService } from './memoryService';
-import { formatBytes } from '@/utils/formatters';
+import { toolRegistry } from './toolRegistry';
+import { resolveIntent } from './intentRouter';
+import {
+  buildGroundedPrompt,
+  formatRuleBasedGroundedResponse,
+} from './toolGrounding';
 
 /**
  * ILLMProvider
- * Strategy interface to allow swapping between the Phase 1/2 rule-based provider
- * and future on-device local LLM engines (ExecuTorch / llama.cpp).
+ * Strategy interface to allow swapping between the rule-based provider
+ * and the on-device local LLM engine (llama.cpp) with status callbacks.
  */
 export interface ILLMProvider {
   name: string;
   isReady(): boolean;
-  generateResponse(prompt: string): Promise<AssistantResponse>;
+  generateResponse(
+    prompt: string,
+    onStatusChange?: (status: string) => void
+  ): Promise<AssistantResponse>;
 }
 
 /**
  * NativeAwareAssistantProvider
- * Provides contextual offline guidance grounded in real native measurements when available,
- * and clearly identifies simulated values when in sandbox fallback mode.
+ * Provides deterministic, offline responses grounded in actual native hardware measurements.
+ * Executes validated read-only tools and clearly notes data sources and boundaries.
  */
 export class NativeAwareAssistantProvider implements ILLMProvider {
   name = 'Rule-Based Offline Assistant';
@@ -27,104 +33,43 @@ export class NativeAwareAssistantProvider implements ILLMProvider {
     return true;
   }
 
-  async generateResponse(prompt: string): Promise<AssistantResponse> {
-    await new Promise((resolve) => setTimeout(resolve, 200));
+  async generateResponse(
+    prompt: string,
+    onStatusChange?: (status: string) => void
+  ): Promise<AssistantResponse> {
+    onStatusChange?.('Analyzing request...');
 
-    const normalized = prompt.toLowerCase().trim();
-    const isNative = storageService.isNativeAvailable();
+    const resolution = resolveIntent(prompt);
 
-    if (normalized.includes('storage') && (normalized.includes('what') || normalized.includes('using'))) {
-      try {
-        const summary = await storageService.getStorageSummary();
-        const isReal = !summary.isMock;
-
-        const prefix = isReal
-          ? '[REAL ANDROID STORAGE MEASUREMENT]'
-          : '[SIMULATED STORAGE PREVIEW - EXPO GO FALLBACK]';
-
-        return {
-          text:
-            `${prefix}\n\n` +
-            `• Total Storage: ${formatBytes(summary.totalBytes)}\n` +
-            `• In-Use Space: ${formatBytes(summary.usedBytes)}\n` +
-            `• Available Free: ${formatBytes(summary.freeBytes)}\n\n` +
-            (isReal
-              ? `Inspected via Android StatFs at ${summary.storagePath || '/data'}. Tap below to view discoverable media files.`
-              : 'Notice: Running in Expo Go sandbox. Build a custom development build to measure physical phone storage.'),
-          isMock: summary.isMock,
-          provider: this.name,
-          disclaimer: isReal
-            ? 'Measured live via Android native StatFs API.'
-            : 'Simulated fixture data for Expo Go development preview.',
-          suggestedAction: {
-            label: 'Open Storage Explorer',
-            route: '/storage',
-          },
-        };
-      } catch {
-        // Fallback
-      }
-    }
-
-    if (normalized.includes('largest') || normalized.includes('large file')) {
+    if (resolution.type === 'destructive_rejected') {
       return {
         text:
-          (isNative ? '[REAL MEDIASTORE INSPECTION]' : '[SIMULATED LARGE FILES]') +
-          '\n\nTo discover large files, the app queries Android MediaStore (Videos, Images, Audio, and Downloads) without scanning private app directories.\n\nTap below to review currently accessible large files and check storage permissions.',
-        isMock: !isNative,
+          `Operation Rejected: ${resolution.reason}\n\n` +
+          `To safely review and confirm file deletions with preview safeguards, use Deep Cleanup.`,
+        isMock: false,
         provider: this.name,
-        disclaimer: isNative
-          ? 'Live queries to MediaStore with size-based sorting.'
-          : 'Sample fixtures shown in sandbox mode.',
-        suggestedAction: {
-          label: 'Inspect Large Files',
-          route: '/storage',
-        },
+        disclaimer: 'Safety Guard: AI cannot delete or modify files directly.',
+        suggestedAction: resolution.suggestedAction,
       };
     }
 
-    if (normalized.includes('performance') || normalized.includes('ram') || normalized.includes('speed')) {
-      try {
-        const mem = await memoryService.getMemorySummary();
-        const isReal = !mem.isMock;
-        const prefix = isReal
-          ? '[REAL ANDROID RAM TELEMETRY]'
-          : '[SIMULATED RAM PREVIEW]';
-
-        return {
-          text:
-            `${prefix}\n\n` +
-            `• Total RAM: ${formatBytes(mem.totalBytes)}\n` +
-            `• Available RAM: ${formatBytes(mem.availableBytes)}\n` +
-            `• Used RAM: ${formatBytes(mem.usedBytes)} (${mem.pressurePercentage}% allocation)\n` +
-            `• Low Memory State: ${mem.isLowMemory ? 'YES (High Pressure)' : 'No (Optimal)'}\n\n` +
-            `Android Architectural Fact: Android intentionally keeps cached apps in RAM to prevent CPU relaunch spikes. You do NOT need to kill background processes.`,
-          isMock: mem.isMock,
-          provider: this.name,
-          disclaimer: isReal
-            ? 'Queried via Android ActivityManager.MemoryInfo.'
-            : 'Simulated fixture data.',
-          suggestedAction: {
-            label: 'View Performance Insights',
-            route: '/performance',
-          },
-        };
-      } catch {
-        // Fallback
-      }
-    }
-
-    if (normalized.includes('free up') || normalized.includes('clean') || normalized.includes('safely')) {
+    if (resolution.type === 'unsupported_capability') {
       return {
         text:
-          `Safe Cleanup Principles:\n` +
-          `• Destructive file deletion is strictly disabled in this phase.\n` +
-          `• In Phase 2, the app only performs non-destructive inspection of accessible media files.\n` +
-          `• Safe candidates for review are downloaded duplicate archives and redundant 4K video clips.\n\n` +
-          `Tap below to preview selected files safely.`,
-        isMock: !isNative,
+          `Unsupported Capability: ${resolution.reason}\n\n` +
+          `Alternative Guidance: ${resolution.recommendedAlternative}`,
+        isMock: false,
         provider: this.name,
-        disclaimer: 'Non-destructive inspection policy. No files are deleted.',
+        disclaimer: 'System boundary enforcement.',
+      };
+    }
+
+    if (resolution.type === 'system_navigation') {
+      return {
+        text: `System Navigation:\n\n${resolution.guidance}`,
+        isMock: false,
+        provider: this.name,
+        disclaimer: 'System settings direction.',
         suggestedAction: {
           label: 'Open Storage Explorer',
           route: '/storage',
@@ -132,37 +77,198 @@ export class NativeAwareAssistantProvider implements ILLMProvider {
       };
     }
 
+    if (resolution.type === 'tool_execution') {
+      onStatusChange?.('Retrieving device data...');
+      const outcome = await toolRegistry.executeTool({
+        toolName: resolution.toolName,
+        parameters: resolution.parameters,
+      });
+      return formatRuleBasedGroundedResponse(prompt, outcome);
+    }
+
+    // Conversational fallback when no specific capability matches
     return {
       text:
-        `You asked: "${prompt}"\n\n` +
-        `I am your offline assistant. In Phase 2, I provide honest explanations of your storage and memory measurements.\n\n` +
-        `Try tapping one of the suggested prompts below to inspect real device storage or RAM behavior!`,
-      isMock: !isNative,
+        `I am your 100% offline AI phone assistant.\n\n` +
+        `I can inspect real device storage and memory metrics using native Android APIs. Try asking:\n` +
+        `• "What is using the most storage?"\n` +
+        `• "Find videos larger than 500 MB."\n` +
+        `• "Show my largest screenshots."\n` +
+        `• "How much device RAM is available?"\n` +
+        `• "Which accessible files could I review for cleanup?"\n\n` +
+        `You can also load an on-device GGUF language model above for natural-language answers!`,
+      isMock: false,
       provider: this.name,
-      disclaimer: 'On-device rule engine. Local LLM will be integrated in Phase 3.',
+      disclaimer: 'On-device rule engine. Load a local GGUF model for generative AI responses.',
+    };
+  }
+}
+
+/**
+ * LocalLLMProvider
+ * Generates responses using the on-device llama.cpp native inference bridge,
+ * strictly grounded in real tool data retrieved from native Android APIs.
+ */
+export class LocalLLMProvider implements ILLMProvider {
+  name = 'On-Device Local LLM (llama.cpp)';
+
+  isReady(): boolean {
+    return true;
+  }
+
+  async generateResponse(
+    prompt: string,
+    onStatusChange?: (status: string) => void
+  ): Promise<AssistantResponse> {
+    onStatusChange?.('Analyzing request...');
+    const resolution = resolveIntent(prompt);
+
+    // Fast-path safety refusals, unsupported operations, and navigation
+    if (resolution.type === 'destructive_rejected') {
+      return {
+        text:
+          `Operation Rejected: ${resolution.reason}\n\n` +
+          `To safely review and confirm file deletions with preview safeguards, use Deep Cleanup.`,
+        isMock: false,
+        provider: this.name,
+        disclaimer: 'Safety Guard: AI cannot delete or modify files directly.',
+        suggestedAction: resolution.suggestedAction,
+      };
+    }
+
+    if (resolution.type === 'unsupported_capability') {
+      return {
+        text:
+          `Unsupported Capability: ${resolution.reason}\n\n` +
+          `Alternative Guidance: ${resolution.recommendedAlternative}`,
+        isMock: false,
+        provider: this.name,
+        disclaimer: 'System boundary enforcement.',
+      };
+    }
+
+    if (resolution.type === 'system_navigation') {
+      return {
+        text: `System Navigation:\n\n${resolution.guidance}`,
+        isMock: false,
+        provider: this.name,
+        disclaimer: 'System settings direction.',
+        suggestedAction: {
+          label: 'Open Storage Explorer',
+          route: '/storage',
+        },
+      };
+    }
+
+    let outcome = null;
+    if (resolution.type === 'tool_execution') {
+      onStatusChange?.('Retrieving device data...');
+      outcome = await toolRegistry.executeTool({
+        toolName: resolution.toolName,
+        parameters: resolution.parameters,
+      });
+    }
+
+    // Build grounded prompt with strict factual boundaries
+    onStatusChange?.('Generating response...');
+    const groundedPrompt = buildGroundedPrompt(prompt, outcome);
+
+    const { localLLMService } = await import('./localLLMService');
+    const result = await localLLMService.generateResponse(groundedPrompt, {
+      maxTokens: 256,
+      temperature: 0.2, // Lower temperature to minimize hallucination
+      topP: 0.85,
+    });
+
+    let suggestedAction = undefined;
+    if (outcome && outcome.success) {
+      switch (outcome.result.toolName) {
+        case 'get_storage_summary':
+        case 'get_storage_categories':
+        case 'find_large_files':
+        case 'search_accessible_files':
+          suggestedAction = {
+            label: 'Open Storage Explorer',
+            route: '/storage',
+          };
+          break;
+        case 'find_screenshots':
+        case 'find_screen_recordings':
+          suggestedAction = {
+            label: 'Open Deep Cleanup',
+            route: '/deep-cleanup',
+          };
+          break;
+        case 'get_memory_summary':
+          suggestedAction = {
+            label: 'View Performance',
+            route: '/performance',
+          };
+          break;
+      }
+    }
+
+    return {
+      text: result.text || 'No response generated.',
+      isMock: Boolean(outcome && outcome.success && outcome.result.isMock),
+      provider: `${this.name} [${result.modelName}]`,
+      disclaimer: `Generated on-device in ${result.durationMs}ms (${result.tokensPerSecond} t/s). 100% offline. Grounded in actual device telemetry.`,
+      suggestedAction,
     };
   }
 }
 
 export interface IAssistantService {
-  sendAssistantMessage(message: string): Promise<AssistantResponse>;
+  sendAssistantMessage(
+    message: string,
+    onStatusChange?: (status: string) => void
+  ): Promise<AssistantResponse>;
   getSuggestedPrompts(): PromptSuggestion[];
   setProvider(provider: ILLMProvider): void;
+  getProvider(): ILLMProvider;
 }
 
 export class AssistantService implements IAssistantService {
   private provider: ILLMProvider;
+  private fallbackProvider: ILLMProvider;
+  private localLLMProvider: ILLMProvider;
 
-  constructor(provider: ILLMProvider = new NativeAwareAssistantProvider()) {
-    this.provider = provider;
+  constructor(provider?: ILLMProvider) {
+    this.fallbackProvider = new NativeAwareAssistantProvider();
+    this.localLLMProvider = new LocalLLMProvider();
+    this.provider = provider || this.fallbackProvider;
   }
 
   setProvider(provider: ILLMProvider): void {
     this.provider = provider;
   }
 
-  async sendAssistantMessage(message: string): Promise<AssistantResponse> {
-    return this.provider.generateResponse(message);
+  getProvider(): ILLMProvider {
+    return this.provider;
+  }
+
+  async sendAssistantMessage(
+    message: string,
+    onStatusChange?: (status: string) => void
+  ): Promise<AssistantResponse> {
+    const { localLLMService } = await import('./localLLMService');
+    const statusResult = await localLLMService.getModelStatus();
+
+    // If a local GGUF model is loaded, route via LocalLLMProvider
+    if (statusResult.status === 'loaded') {
+      try {
+        return await this.localLLMProvider.generateResponse(message, onStatusChange);
+      } catch (err) {
+        // If user cancelled, rethrow so caller handles cancellation
+        if (String(err).toLowerCase().includes('cancel')) {
+          throw err;
+        }
+        // Graceful fallback to rule-based engine on local generation failure
+        return this.fallbackProvider.generateResponse(message, onStatusChange);
+      }
+    }
+
+    return this.provider.generateResponse(message, onStatusChange);
   }
 
   getSuggestedPrompts(): PromptSuggestion[] {
@@ -172,5 +278,8 @@ export class AssistantService implements IAssistantService {
 
 export const assistantService: IAssistantService = new AssistantService();
 
-export const sendAssistantMessage = (message: string): Promise<AssistantResponse> =>
-  assistantService.sendAssistantMessage(message);
+export const sendAssistantMessage = (
+  message: string,
+  onStatusChange?: (status: string) => void
+): Promise<AssistantResponse> =>
+  assistantService.sendAssistantMessage(message, onStatusChange);

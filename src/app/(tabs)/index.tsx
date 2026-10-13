@@ -1,13 +1,14 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   ScrollView,
   StyleSheet,
   RefreshControl,
   View,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '@/components/Header';
-import { MockBanner } from '@/components/MockBanner';
+import { DataSourceIndicator } from '@/components/DataSourceIndicator';
 import { StorageOverviewCard } from '@/features/dashboard/StorageOverviewCard';
 import { RamOverviewCard } from '@/features/dashboard/RamOverviewCard';
 import { QuickActions } from '@/features/dashboard/QuickActions';
@@ -17,8 +18,9 @@ import {
   getMemorySummary,
   getRecentScans,
   storageService,
+  memoryService,
 } from '@/services';
-import { StorageSummary, MemorySummary, RecentScanInfo } from '@/types';
+import { StorageSummary, MemorySummary, RecentScanInfo, DataSourceStatus } from '@/types';
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 
@@ -35,14 +37,27 @@ export default function DashboardScreen() {
 
   const isNative = storageService.isNativeAvailable();
 
-  const fetchDashboardData = useCallback(async () => {
+  const dataSourceStatus: DataSourceStatus = useMemo(() => {
+    if (storage?.dataSourceStatus === 'unavailable' || memory?.dataSourceStatus === 'unavailable') {
+      return 'unavailable';
+    }
+    if (storage?.dataSourceStatus === 'live' && memory?.dataSourceStatus === 'live') {
+      return 'live';
+    }
+    if (storage?.dataSourceStatus === 'simulated' || memory?.dataSourceStatus === 'simulated') {
+      return 'simulated';
+    }
+    return isNative ? 'live' : 'simulated';
+  }, [storage, memory, isNative]);
+
+  const fetchDashboardData = useCallback(async (forceRefresh: boolean = false) => {
     try {
       const [storageData, memoryData, scanData] = await Promise.all([
-        getStorageSummary().catch((e) => {
+        getStorageSummary(forceRefresh).catch((e) => {
           setStorageError('Could not query storage filesystem: ' + e.message);
           return null;
         }),
-        getMemorySummary().catch((e) => {
+        getMemorySummary(forceRefresh).catch((e) => {
           setMemoryError('Could not query system memory: ' + e.message);
           return null;
         }),
@@ -61,31 +76,35 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      getStorageSummary().catch((e) => {
-        if (active) setStorageError('Could not query storage filesystem: ' + e.message);
-        return null;
-      }),
-      getMemorySummary().catch((e) => {
-        if (active) setMemoryError('Could not query system memory: ' + e.message);
-        return null;
-      }),
-      getRecentScans(),
-    ])
-      .then(([storageData, memoryData, scanData]) => {
-        if (!active) return;
-        if (storageData) setStorage(storageData);
-        if (memoryData) setMemory(memoryData);
-        setScans(scanData);
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.error('Failed to load dashboard data:', error);
-        if (active) setLoading(false);
-      });
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      Promise.all([
+        getStorageSummary().catch((e) => {
+          if (active) setStorageError('Could not query storage filesystem: ' + e.message);
+          return null;
+        }),
+        getMemorySummary().catch((e) => {
+          if (active) setMemoryError('Could not query system memory: ' + e.message);
+          return null;
+        }),
+        getRecentScans(),
+      ])
+        .then(([storageData, memoryData, scanData]) => {
+          if (!active) return;
+          if (storageData) setStorage(storageData);
+          if (memoryData) setMemory(memoryData);
+          setScans(scanData);
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error('Failed to load dashboard data:', error);
+          if (active) setLoading(false);
+        });
+    });
 
     return () => {
       active = false;
+      task.cancel();
     };
   }, []);
 
@@ -93,7 +112,9 @@ export default function DashboardScreen() {
     setRefreshing(true);
     setStorageError(null);
     setMemoryError(null);
-    fetchDashboardData();
+    storageService.invalidateCache();
+    memoryService.invalidateCache();
+    fetchDashboardData(true);
   }, [fetchDashboardData]);
 
   const handleSimulateScan = async () => {
@@ -133,16 +154,35 @@ export default function DashboardScreen() {
           <Header
             title="Offline AI Phone Assistant"
             subtitle="Android native storage & memory inspector"
-            badgeText={isNative ? 'Native Build Active' : 'Expo Go Preview'}
-            badgeVariant={isNative ? 'success' : 'warning'}
+            badgeText={
+              dataSourceStatus === 'live'
+                ? 'LIVE DEVICE DATA'
+                : dataSourceStatus === 'unavailable'
+                ? 'UNAVAILABLE'
+                : 'SIMULATED DATA'
+            }
+            badgeVariant={
+              dataSourceStatus === 'live'
+                ? 'success'
+                : dataSourceStatus === 'unavailable'
+                ? 'error'
+                : 'warning'
+            }
           />
 
-          {/* Banner: Only show mock notice if not running native build */}
-          {!isNative ? (
-            <MockBanner customMessage="Running in Expo Go sandbox. Storage and RAM values above are simulated fallbacks. Build with `npx expo run:android` to view real physical phone measurements." />
-          ) : (
-            <MockBanner customMessage="Phase 2 Active: Storage and RAM readings are measured live from your Android device using StatFs and ActivityManager. File deletion remains strictly disabled." />
-          )}
+          {/* Data Source Indicator */}
+          <DataSourceIndicator
+            status={dataSourceStatus}
+            sourceName="Android StatFs & ActivityManager"
+            timestamp={storage?.lastScanTimestamp}
+            errorMessage={
+              storage?.dataSourceError ||
+              memory?.dataSourceError ||
+              storageError ||
+              memoryError
+            }
+            onRetry={onRefresh}
+          />
 
           {/* Quick Actions */}
           <QuickActions

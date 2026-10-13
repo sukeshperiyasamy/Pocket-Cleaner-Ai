@@ -4,7 +4,6 @@ import {
   TextInput,
   StyleSheet,
   Pressable,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,23 +13,29 @@ import { Radius, Spacing, Typography } from '@/constants/theme';
 interface ChatInputBarProps {
   onSend: (text: string) => void;
   loading?: boolean;
+  onCancel?: () => void;
 }
 
 export const ChatInputBar: React.FC<ChatInputBarProps> = ({
   onSend,
   loading = false,
+  onCancel,
 }) => {
   const [text, setText] = useState('');
   const theme = useTheme();
 
   const handleSend = () => {
+    if (loading && onCancel) {
+      onCancel();
+      return;
+    }
     const trimmed = text.trim();
     if (!trimmed || loading) return;
     onSend(trimmed);
     setText('');
   };
 
-  const isSendDisabled = text.trim().length === 0 || loading;
+  const isSendDisabled = !loading && text.trim().length === 0;
 
   return (
     <View
@@ -53,7 +58,7 @@ export const ChatInputBar: React.FC<ChatInputBarProps> = ({
         ]}
         value={text}
         onChangeText={setText}
-        placeholder="Ask about storage, large files, or RAM..."
+        placeholder={loading ? 'Generating response...' : 'Ask about storage, large files, or RAM...'}
         placeholderTextColor={theme.textMuted}
         multiline
         maxLength={500}
@@ -68,18 +73,20 @@ export const ChatInputBar: React.FC<ChatInputBarProps> = ({
         style={({ pressed }) => [
           styles.sendButton,
           {
-            backgroundColor: isSendDisabled
+            backgroundColor: loading
+              ? theme.error
+              : isSendDisabled
               ? theme.backgroundElement
               : theme.primary,
           },
           pressed && { opacity: 0.8 },
         ]}
         accessibilityRole="button"
-        accessibilityLabel="Send message"
+        accessibilityLabel={loading ? 'Stop generation' : 'Send message'}
         accessibilityState={{ disabled: isSendDisabled }}
       >
         {loading ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          <Ionicons name="stop" size={16} color="#FFFFFF" />
         ) : (
           <Ionicons
             name="arrow-up"

@@ -1,6 +1,6 @@
-# Offline AI Phone Assistant (Android MVP — Phase 1)
+# Pocket-Cleaner-Ai
 
-**Offline AI Phone Assistant** is a free, open-source, privacy-preserving Android mobile application designed to help users understand, inspect, and safely manage phone storage and memory usage through natural language and on-device processing.
+**Pocket Cleaner AI (Offline AI Phone Assistant)** is a free, open-source, privacy-preserving Android mobile application designed to help users understand, inspect, and safely manage phone storage and memory usage through natural language and on-device processing.
 
 > [!IMPORTANT]
 > **Phase 1 MVP Scope & Safety Guarantee:**
